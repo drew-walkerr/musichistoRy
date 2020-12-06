@@ -16,7 +16,7 @@ get_history_audio_features <- function(my_data,user){
   possible_feats <- purrr::possibly(track_audio_features, otherwise = tidyr::tibble("NA"))
   totalaudio_features <- my_data %>%
     dplyr::mutate(audio_features = furrr::future_map2(artist, title, possible_feats)) %>%
-    tidyr::unnest(cols = c(audiofeatures)) %>%
+    tidyr::unnest() %>%
     tidyr::as_tibble()
   tictoc::toc()
   totalaudio_features$date <- lubridate::dmy_hm(totalaudio_features$date)
