@@ -10,7 +10,6 @@ get_history_audio_features <- function(my_data,user){
 }
   # create a version of this function which can handle errors
   possible_af <- purrr::possibly(track_audio_features, otherwise = tidyr::tibble())
-  colnames(my_data)
   colnames(my_data)[colnames(my_data)=="song_title"] = "title"
   tictoc::tic()
   future::plan(future::multiprocess)
