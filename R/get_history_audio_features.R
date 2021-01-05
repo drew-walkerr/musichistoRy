@@ -1,3 +1,11 @@
+#' get_history_audio_features
+#'
+#' This function pulls Spotify audio features for a user's entire last.fm listening history, with detailed track audio analysis and information. 
+#'
+#' @param my_data a last.fm scrobble dataframe with at least track artist and title columns , as created by get_history.
+#' @param user should be last.fm username or user's real name, used to name track audio features .csv and dataframe
+#' @return A lastfm scrobble, or music listening history dataframe with corresponding spotify track audiofeatures
+#' @export
 get_history_audio_features <- function(my_data,user){
   Sys.setenv(SPOTIFY_CLIENT_ID = '2c46a5d6764f425ab746a56a1c8791b9')
   Sys.setenv(SPOTIFY_CLIENT_SECRET = '9b809cd5be004e8fbbc72ad74b0e19a7')

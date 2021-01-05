@@ -1,3 +1,10 @@
+#' get_session_summaries
+#'
+#' This function performs further variable computation to aid in analysis, including date manipulation, track start/end times, differentials to help determine skipping, as well as session length, determined by minute long difference in music listening end and start times. 
+#'
+#' @param audio_features is a last.fm scrobble/spotify audio features dataframe, as created by get_history_audio_features.
+#' @return a spotify/last.fm dataframe with computed values on date, sessions, and listening times 
+#' @export
 get_session_df  <- function(audio_features){
 audio_features$date <- lubridate::as_datetime(audio_features$date)
 # ADDING SESSION VARIABLES -------------------------------------
@@ -29,7 +36,7 @@ raw_music_pull_dataframe <- dplyr::arrange(raw_music_pull_dataframe, date)
 #ASSIGN SESSION LABELS 
 as.numeric(raw_music_pull_dataframe$diff)
 session_dataframe <- raw_music_pull_dataframe %>% 
-  dplyr::mutate(new_interval = ifelse(abs(as.numeric(diff)) > 3600, 1, 0),
+  dplyr::mutate(new_interval = ifelse(abs(as.numeric(diff)) > 60, 1, 0),
                 session_number = 1 + cumsum(new_interval))
 #Summarizing session variable summaries, session lengths, session midpoints 
 by_session_number <- group_by(session_dataframe, session_number)
