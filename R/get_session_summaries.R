@@ -12,7 +12,7 @@ audio_features$date <- lubridate::as_datetime(audio_features$date)
 milli <- lubridate::dmilliseconds(audio_features$duration_ms)
 #adding variables to start to create the intervals
 raw_music_pull_dataframe <- audio_features %>% 
-  arrange(date) %>% 
+  dplyr::arrange(desc(date)) %>% 
   dplyr::mutate(year = lubridate::year(date), 
          month = lubridate::month(date), 
          day = lubridate::day(date), 
@@ -26,25 +26,25 @@ raw_music_pull_dataframe <- audio_features %>%
   dplyr::add_count(artist) %>% 
   dplyr::rename(artist_play_count = n)
 #make time.interval object between when the previous song could have theoretically ended and the start of the track played most recently to indicate if there was time after it finished playing or was skipped
-time.interval <- lubridate::interval(raw_music_pull_dataframe$recentstart,raw_music_pull_dataframe$last_theo_end)
+time.interval <- lubridate::interval(start = raw_music_pull_dataframe$last_theo_end,end = raw_music_pull_dataframe$recentstart)
 #Create variable that is the difference between start time and theoretical last time played in duration
 #This part isn't working for some reason-- does not accurately separate these into sessions
 raw_music_pull_dataframe <- raw_music_pull_dataframe %>% 
   dplyr::mutate(diff = lubridate::as.duration(time.interval))
 #REORDER oldest to newest 
-raw_music_pull_dataframe <- dplyr::arrange(raw_music_pull_dataframe, date) 
 #ASSIGN SESSION LABELS 
 as.numeric(raw_music_pull_dataframe$diff)
 session_dataframe <- raw_music_pull_dataframe %>% 
+  dplyr::arrange(date) %>% 
   dplyr::mutate(new_interval = ifelse(abs(as.numeric(diff)) > 60, 1, 0),
-                session_number = 1 + cumsum(new_interval))
+                session_number = 1 + cumsum(ifelse(is.na(new_interval), 0, new_interval)))
 #Summarizing session variable summaries, session lengths, session midpoints 
 by_session_number <- group_by(session_dataframe, session_number)
 session_summary <- dplyr::summarise(by_session_number,
                                     session_song_count = dplyr::n(),
                                     session_valence_mean = mean(valence, na.rm = TRUE),
                                     session_energy_mean = mean(energy, na.rm = TRUE),
-                                    session_key_mean = mean(music_key, na.rm = TRUE),
+                                    session_key_mean = mean(key, na.rm = TRUE),
                                     session_loudness_mean = mean(loudness, na.rm = TRUE),
                                     sessionmonth = mean(month, na.rm = TRUE),
                                     lastsongdatetime = max(end, na.rm = TRUE),
@@ -60,3 +60,5 @@ session_summary <- session_summary %>%
 merged_session_summary<- left_join(session_dataframe,session_summary, by = "session_number")
 return(merged_session_summary)
 }
+
+drew_sessiondf <- get_session_df(drewaudiofeatures)
