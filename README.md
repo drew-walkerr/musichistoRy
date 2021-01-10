@@ -4,4 +4,4 @@ Created for the UF Health PICU Music and Delirium Research study, this package r
 To install the package: 
 `install.packages("devtools")`
 
-`install.github(drew-walkerr/musichistoRy)`
+`install_github(drew-walkerr/musichistoRy)`
