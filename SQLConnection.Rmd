@@ -18,6 +18,21 @@ library(here)
 # The connection method below uses a password stored in a settings file.
 # R needs a full path to find the settings file.
 rmariadb.settingsfile <-"/Users/Drew/Documents/musichistory.cnf"
+#if on PC
+rmariadb.settingsfile <-"/Users/andre/Documents/musichistory.cnf"
+
+
+
+rmariadb.db <-"musichistory"
+musichistoryDb <- dbConnect(RMariaDB::MariaDB(),default.file=rmariadb.settingsfile,group=rmariadb.db)
+dbListTables(musichistoryDb)
+# disconnect to clean up the connection to the database.
+
+```
+
+```{r,loaddata}
+# list the table. This confirms we connected to the database.
+dbListTables(musichistoryDb)
 #selet -type, key, changed user to lastfm_username, key to music_key,mde to music_mode 
 drewaudiofeatures <- read_csv("drewaudiofeatures.csv")
 izzyaudiofeatures <- read_csv("izzyaudiofeatures.csv")
@@ -25,7 +40,9 @@ drewaudiofeatures <- drewaudiofeatures %>%
   rename(music_mode = mode)
 izzyaudiofeatures <- izzyaudiofeatures %>% 
   rename(music_mode = mode)
+```
 
+```{r,sql queries}
 str(drewaudiofeatures)
 
 query<-"CREATE TABLE musichistory.audiofeatures (X1 INT,title TEXT,song_mbid  TEXT,artist_mbid TEXT,artist TEXT,album_mbid TEXT,album TEXT,date_unix TEXT,date TEXT,danceability INT,energy INT,key INT,loudness INT,mode INT,speechiness INT,acousticness INT,instrumentalness INT,liveness INT,valence INT,tempo INT,type TEXT,id TEXT,uri TEXT,track_href TEXT,analysis_url TEXT,duration_ms INT,time_signature INT,value TEXT,user TEXT);"
@@ -33,13 +50,6 @@ query<-"CREATE TABLE musichistory.audiofeatures (X1 INT,title TEXT,song_mbid  TE
 #Send the query to MySQL for execution
 results <- dbSendQuery(musichistoryDb, query)
 dbClearResult(results)
-
-
-rmariadb.db <-"musichistory"
-musichistoryDb <- dbConnect(RMariaDB::MariaDB(),default.file=rmariadb.settingsfile,group=rmariadb.db)
-
-# list the table. This confirms we connected to the database.
-dbListTables(musichistoryDb)
 
 dbWriteTable(musichistoryDb, value = drewaudiofeatures, row.names = FALSE, name = "Audio_Features", append = TRUE )
 

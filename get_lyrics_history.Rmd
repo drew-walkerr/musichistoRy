@@ -1,0 +1,44 @@
+---
+title: "Testing"
+author: "Drew Walker"
+date: "1/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(devtools)
+devtools::install_github('charlie86/spotifyr')
+library(spotifyr)
+library(tidyverse)
+library(genius)
+devtools::install_github("drew-walkerr/musichistoRy")
+library(musichistoRy)
+library(tictoc)
+
+```
+
+
+```{r, loading dataframes}
+tic()
+myhistory <- get_history("thedrewwalker")
+toc() 
+```
+
+```{r, audiofeatures}
+tic()
+myaudiofeatures <- get_history_audio_features(myhistory,drew)
+toc()
+
+```
+
+```{r}
+
+myhistory_snip <- myhistory %>% 
+  head(n=10)
+mylyrics <- myhistory_snip %>% 
+  add_genius(artist, song_title, type = "track")
+
+head(myhistory)
+```
+
