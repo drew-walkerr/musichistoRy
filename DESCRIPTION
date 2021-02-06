@@ -8,3 +8,4 @@ License: Proprietary. Do not distribute outside of UF Health PICU Music and Deli
 LazyData: true
 Imports: tidyverse,magrittr,devtools,spotifyr,scrobbler,purrr,furrr,lubridate,tictoc,glmnet
 RoxygenNote: 7.1.1
+Depends: spotifyr, scrobbler
