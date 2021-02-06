@@ -1,0 +1,85 @@
+---
+title: "musichistoRy lyrics analysis"
+author: "Drew Walker"
+date: "1/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(devtools)
+devtools::install_github('charlie86/spotifyr')
+library(spotifyr)
+library(tidyverse)
+library(genius)
+devtools::install_github("drew-walkerr/musichistoRy")
+library(musichistoRy)
+library(tictoc)
+library(syuzhet)
+library(knitr)
+```
+
+```{r, loading dataframes}
+tic()
+myhistory <- get_history("thedrewwalker")
+toc() 
+```
+
+```{r, audiofeatures}
+tic()
+myaudiofeatures <- get_history_audio_features(myhistory,drew)
+toc()
+
+```
+
+```{r, get_lyrics}
+
+
+
+tic()
+myhistory_snip <- myhistory %>% 
+  head(n=100) 
+toc()
+
+myaudiofeatures <- get_history_audio_features(myhistory_snip,"drew")
+
+tic()
+mylyrics <- myaudiofeatures %>% 
+  add_genius(artist, title, type = "track")
+toc()
+head(mylyrics, n=100)
+kable(mylyrics)
+```
+
+# Identifying Language and Translating Lyrics, building list of songs by language
+
+-   <http://code.markedmondson.me/googleLanguageR/>
+
+```{r, Googletranslate}
+library()
+
+```
+
+# Using [syuzhet](https://cran.r-project.org/web/packages/syuzhet/vignettes/syuzhet-vignette.html) package for sentiment analysis
+
+-   <div>
+
+    </div>
+
+-   <https://cran.r-project.org/web/packages/syuzhet/vignettes/syuzhet-vignette.html>
+
+```{r, sentiment-analysis}
+
+
+```
+
+# Creating Anki decks 
+
+We'll transform the lyrics data to prepare for the deck import files, and utilize the [reticulate](https://rstudio.github.io/reticulate/index.html) package to interface with [AnkiConnect](https://github.com/FooSoft/anki-connect) to build Anki decks within R.
+
+-   AnkiConnect can build decks, and pull User Statistics, allowing for dashboard anki data as well
+
+```{r, anki-deckbuilding}
+
+
+```

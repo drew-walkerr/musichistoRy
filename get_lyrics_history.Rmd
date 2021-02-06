@@ -35,10 +35,11 @@ toc()
 ```{r}
 
 myhistory_snip <- myhistory %>% 
-  head(n=10)
+  head(n=100)
+tic()
 mylyrics <- myhistory_snip %>% 
   add_genius(artist, song_title, type = "track")
-
+toc()
 head(myhistory)
 ```
 
