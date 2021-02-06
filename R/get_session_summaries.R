@@ -60,5 +60,3 @@ session_summary <- session_summary %>%
 merged_session_summary<- left_join(session_dataframe,session_summary, by = "session_number")
 return(merged_session_summary)
 }
-
-drew_sessiondf <- get_session_df(drewaudiofeatures)
