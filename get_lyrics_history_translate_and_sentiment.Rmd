@@ -25,26 +25,29 @@ myhistory <- get_history("thedrewwalker")
 toc() 
 ```
 
-```{r, audiofeatures}
-tic()
-myaudiofeatures <- get_history_audio_features(myhistory,drew)
-toc()
-
-```
-
-```{r, get_lyrics}
-
-
-
+```{r, history and audiofeatures}
 tic()
 myhistory_snip <- myhistory %>% 
-  head(n=100) 
+  head(10) 
 toc()
 
 myaudiofeatures <- get_history_audio_features(myhistory_snip,"drew")
 
+```
+
+```{r, get_lyrics}
+mysession_df <- get_session_df(myaudiofeatures)
+
+#Should create group_by track dataset that summarizes playcount values and such 
+unique_songs <- mysession_df %>% 
+  distinct(id, .keep_all = TRUE)
+
+```
+
+```{r, lyrics}
+#unique dataset for lyrics 
 tic()
-mylyrics <- myaudiofeatures %>% 
+mylyrics <- unique_songs %>% 
   add_genius(artist, title, type = "track")
 toc()
 head(mylyrics, n=100)
@@ -56,8 +59,20 @@ kable(mylyrics)
 -   <http://code.markedmondson.me/googleLanguageR/>
 
 ```{r, Googletranslate}
-library()
+install.packages("googleLanguageR")
+library(googleLanguageR)
+gl_auth("googletranslateR-717ce515dfc4.json")
+tic()
+mylyrics_detected <- mylyrics %>% 
+  mutate(language = gl_translate_detect(lyric),
+    en_translation = gl_translate(lyric))
+toc()
 
+
+
+
+my_lyrics_translated <- 
+  <- gl_translate_detect
 ```
 
 # Using [syuzhet](https://cran.r-project.org/web/packages/syuzhet/vignettes/syuzhet-vignette.html) package for sentiment analysis
@@ -73,13 +88,17 @@ library()
 
 ```
 
-# Creating Anki decks 
+# Creating Anki decks
 
 We'll transform the lyrics data to prepare for the deck import files, and utilize the [reticulate](https://rstudio.github.io/reticulate/index.html) package to interface with [AnkiConnect](https://github.com/FooSoft/anki-connect) to build Anki decks within R.
 
 -   AnkiConnect can build decks, and pull User Statistics, allowing for dashboard anki data as well
 
 ```{r, anki-deckbuilding}
+library(reticulate)
+reticulate::virtualenv_create()
 
+```
 
+```{}
 ```
