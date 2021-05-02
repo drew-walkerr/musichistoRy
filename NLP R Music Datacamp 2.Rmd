@@ -1,0 +1,30 @@
+---
+title: "NLP R Music Datacamp 2"
+author: "Drew Walker"
+date: "5/2/2021"
+output: html_document
+---
+
+https://www.datacamp.com/community/tutorials/ML-NLP-lyric-analysis 
+
+This is part Two-B of a three-part tutorial series in which you will continue to use R to perform a variety of analytic tasks on a case study of musical lyrics by the legendary artist Prince, as well as other artists and authors. The three tutorials cover the following:
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidytext) #text mining, unnesting
+#install.packages("topicmodels")
+library(topicmodels) #the LDA algorithm
+library(tidyr) #gather()
+library(dplyr) #awesome tools
+library(ggplot2) #visualization
+library(kableExtra) #create attractive tables
+library(knitr) #simple table generator
+library(ggrepel) #text and label geoms for ggplot2
+library(gridExtra)
+library(formattable) #color tile and color bar in `kables`
+library(tm) #text mining
+#install.packages("circlize")
+library(circlize) #already loaded, but just being comprehensive
+install.packages("plotly")
+library(plotly) #interactive ggplot graphs
+```

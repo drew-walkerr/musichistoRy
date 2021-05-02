@@ -16,6 +16,7 @@ devtools::install_github("drew-walkerr/musichistoRy")
 library(musichistoRy)
 library(tictoc)
 library(syuzhet)
+install.packages("syuzhet")
 library(knitr)
 ```
 
@@ -72,8 +73,7 @@ mylyrics_detected2 <- flatten(mylyrics_detected)
 save(mylyrics_detected, file = "mylyrics_detected.Rdata")
 
 
-my_lyrics_translated <- 
-  <- gl_translate_detect
+
 ```
 
 ```{r, spanish-deck}

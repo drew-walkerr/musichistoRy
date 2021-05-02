@@ -1,0 +1,536 @@
+---
+title: "NLP R Music Datacamp"
+author: "Drew Walker"
+date: "5/2/2021"
+output: html_document
+---
+
+Shoutout to Debbie Liske  https://www.datacamp.com/community/tutorials/R-nlp-machine-learning 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rvest)
+library(tidyverse)
+library(tidytext)
+library(here)
+library(tm)
+library(gridExtra)
+```
+
+# Read data
+
+```{r read}
+prince_orig <- read.csv("prince_raw_data.csv", stringsAsFactors = FALSE)
+
+names(prince_orig)
+```
+```{r trim}
+prince <- prince_orig %>% 
+  select(lyrics = text, song, year, album, peak, 
+         us_pop = US.Pop, us_rnb = US.R.B)
+glimpse(prince[139,])
+dim(prince)
+```
+# Fix contractions function
+
+```{r fixcontractionsfunction}
+# function to expand contractions in an English-language source
+fix.contractions <- function(doc) {
+  # "won't" is a special case as it does not expand to "wo not"
+  doc <- gsub("won't", "will not", doc)
+  doc <- gsub("can't", "can not", doc)
+  doc <- gsub("n't", " not", doc)
+  doc <- gsub("'ll", " will", doc)
+  doc <- gsub("'re", " are", doc)
+  doc <- gsub("'ve", " have", doc)
+  doc <- gsub("'m", " am", doc)
+  doc <- gsub("'d", " would", doc)
+  # 's could be 'is' or could be possessive: it has no expansion
+  doc <- gsub("'s", "", doc)
+  return(doc)
+}
+
+# fix (expand) contractions
+prince$lyrics <- sapply(prince$lyrics, fix.contractions)
+
+# function to remove special characters
+removeSpecialChars <- function(x) gsub("[^a-zA-Z0-9 ]", " ", x)
+# remove special characters
+prince$lyrics <- sapply(prince$lyrics, removeSpecialChars)
+
+# convert everything to lower case
+prince$lyrics <- sapply(prince$lyrics, tolower)
+
+```
+
+```{r create-prince-new}
+#create the decade column
+prince <- prince %>%
+  mutate(decade = 
+           ifelse(prince$year %in% 1978:1979, "1970s", 
+           ifelse(prince$year %in% 1980:1989, "1980s", 
+           ifelse(prince$year %in% 1990:1999, "1990s", 
+           ifelse(prince$year %in% 2000:2009, "2000s", 
+           ifelse(prince$year %in% 2010:2015, "2010s", 
+                  "NA"))))))
+
+prince <- prince %>%
+  mutate(chart_level = 
+           ifelse(prince$peak %in% 1:10, "Top 10", 
+           ifelse(prince$peak %in% 11:100, "Top 100", "Uncharted")))
+
+#create binary field called charted showing if a song hit the charts at all
+prince <- prince %>%
+  mutate(charted = 
+           ifelse(prince$peak %in% 1:100, "Charted", "Uncharted"))
+
+#save the new dataset to .csv for use in later tutorials
+write.csv(prince, file = "prince_new.csv")
+
+```
+
+```{r plottheme}
+#define some colors to use throughout
+my_colors <- c("#E69F00", "#56B4E9", "#009E73", "#CC79A7", "#D55E00")
+
+theme_lyrics <- function() 
+{
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none")
+}
+```
+
+```{r decade-summary}
+prince %>%
+  filter(decade != "NA") %>%
+  group_by(decade, charted) %>%
+  summarise(number_of_songs = n()) %>%
+  ggplot() + 
+  geom_bar(aes(x = decade, y = number_of_songs, 
+               fill = charted), stat = "identity")  +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank()) +
+  ggtitle("Released Songs") +
+  labs(x = NULL, y = "Song Count")+
+  theme_classic()
+```
+```{r top-ten}
+charted_songs_over_time <- prince %>%
+  filter(peak > 0) %>%
+  group_by(decade, chart_level) %>%
+  summarise(number_of_songs = n())
+
+charted_songs_over_time %>% 
+  ggplot() + 
+  geom_bar(aes(x = decade, y = number_of_songs, 
+               fill = chart_level), stat = "identity") +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(x = NULL, y = "Song Count") +
+  ggtitle("Charted Songs")+
+  theme_classic()
+```
+
+
+```{r all-songs}
+#look at the full data set at your disposal
+prince %>%
+  group_by(decade, chart_level) %>%
+  summarise(number_of_songs = n()) %>%
+  ggplot() +
+  geom_bar(aes(x = decade, y = number_of_songs, 
+               fill = chart_level), stat = "identity")  +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(x = NULL, y = "Song Count") +
+  ggtitle("All Songs in Data")
+```
+
+```{r top-1}
+library(knitr) # for dynamic reporting
+library(kableExtra) # create a nicely formated HTML table
+library(formattable) # for the color_tile function
+prince %>%
+  filter(peak == "1") %>%
+  select(year, song, peak) %>%
+  arrange(year) %>%
+  mutate(year = color_tile("lightblue", "lightgreen")(year)) %>%
+  mutate(peak = color_tile("lightgreen", "lightgreen")(peak)) %>%
+  kable("html", escape = FALSE, align = "c", caption = "Prince's No. 1 Songs") %>%
+  kable_styling(bootstrap_options = 
+                  c("striped", "condensed", "bordered"), 
+                  full_width = FALSE)
+```
+# Text mining
+
+* Tokenization
+* Corpus: Collection of documents created by tm text mining package
+* Document-term matrix: matrix that lists all occurrences of words in the corpus, by document, where documents are rows and words are columns
+
+* tidy text: table with one token per row. token is word or ngram. tokenization = splitting lyrics to token  
+```{r text-mining-1}
+#Remove some words that include in lytic sites, undesirable words from prior analysis 
+
+undesirable_words <- c("prince", "chorus", "repeat", "lyrics", 
+                       "theres", "bridge", "fe0f", "yeah", "baby", 
+                       "alright", "wanna", "gonna", "chorus", "verse", 
+                       "whoa", "gotta", "make", "miscellaneous", "2", 
+                       "4", "ooh", "uurh", "pheromone", "poompoom", "3121", 
+                       "matic", " ai ", " ca ", " la ", "hey", " na ", 
+                       " da ", " uh ", " tin ", "  ll", "transcription",
+                       "repeats")
+```
+
+```{r stopwords}
+#unnest and remove stop, undesirable and short words
+prince_words_filtered <- prince %>%
+  unnest_tokens(word, lyrics) %>%
+  anti_join(stop_words) %>%
+  distinct() %>%
+  filter(!word %in% undesirable_words) %>%
+  filter(nchar(word) > 3)
+```
+
+Word count analysis
+```{r wordcount}
+full_word_count <- prince %>%
+  unnest_tokens(word, lyrics) %>%
+  group_by(song,chart_level) %>%
+  summarise(num_words = n()) %>%
+  arrange(desc(num_words)) 
+
+full_word_count[1:10,] %>%
+  ungroup(num_words, song) %>%
+  mutate(num_words = color_bar("lightblue")(num_words)) %>%
+  mutate(song = color_tile("lightpink","lightpink")(song)) %>%
+  kable("html", escape = FALSE, align = "c", caption = "Songs With Highest Word Count") %>%
+  kable_styling(bootstrap_options = 
+                  c("striped", "condensed", "bordered"), 
+                  full_width = FALSE)
+```
+
+```{r wordcount-distribution}
+full_word_count %>%
+  ggplot() +
+    geom_histogram(aes(x = num_words, fill = chart_level )) +
+    ylab("Song Count") + 
+    xlab("Word Count per Song") +
+    ggtitle("Word Count Distribution") +
+    theme(plot.title = element_text(hjust = 0.5),
+          legend.title = element_blank(),
+          panel.grid.minor.y = element_blank())+
+  theme_classic()
+```
+Frequently used words
+```{r frequently-used}
+prince_words_filtered %>%
+  count(word, sort = TRUE) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot() +
+    geom_col(aes(word, n), fill = my_colors[4]) +
+    theme(legend.position = "none", 
+          plot.title = element_text(hjust = 0.5),
+          panel.grid.major = element_blank()) +
+    xlab("") + 
+    ylab("Song Count") +
+    ggtitle("Most Frequently Used Words in Prince Lyrics") +
+    coord_flip()+
+  theme_classic()
+```
+```{r}
+#install_github("lchiffon/wordcloud2")
+library(wordcloud2)
+
+prince_words_counts <- prince_words_filtered %>%
+  count(word, sort = TRUE) 
+
+wordcloud2(prince_words_counts[1:300, ], size = .5)
+
+```
+
+```{r popularwordsbychart}
+popular_words <- prince_words_filtered %>% 
+  group_by(chart_level) %>%
+  count(word, chart_level, sort = TRUE) %>%
+  slice(seq_len(8)) %>%
+  ungroup() %>%
+  arrange(chart_level,n) %>%
+  mutate(row = row_number()) 
+
+popular_words %>%
+  ggplot(aes(row, n, fill = chart_level)) +
+    geom_col(show.legend = NULL) +
+    labs(x = NULL, y = "Song Count") +
+    ggtitle("Popular Words by Chart Level") + 
+    theme_lyrics() +  
+    facet_wrap(~chart_level, scales = "free") +
+    scale_x_continuous(  # This handles replacement of row 
+      breaks = popular_words$row, # notice need to reuse data frame
+      labels = popular_words$word) +
+    coord_flip()
+
+```
+
+```{r timeless-words}
+timeless_words <- prince_words_filtered %>% 
+  filter(decade != 'NA') %>%
+  group_by(decade) %>%
+  count(word, decade, sort = TRUE) %>%
+  slice(seq_len(8)) %>%
+  ungroup() %>%
+  arrange(decade,n) %>%
+  mutate(row = row_number()) 
+
+timeless_words %>%
+  ggplot(aes(row, n, fill = decade)) +
+    geom_col(show.legend = NULL) +
+    labs(x = NULL, y = "Song Count") +
+    ggtitle("Timeless Words") + 
+    theme_lyrics() +  
+    facet_wrap(~decade, scales = "free", ncol = 5) +
+    scale_x_continuous(  # This handles replacement of row 
+      breaks = timeless_words$row, # notice need to reuse data frame
+      labels = timeless_words$word) +
+    coord_flip()
+```
+Word length
+```{r wordlength}
+#unnest and remove undesirable words, but leave in stop and short words
+prince_word_lengths <- prince %>%
+  unnest_tokens(word, lyrics) %>%
+  group_by(song,decade) %>%
+  distinct() %>%
+  filter(!word %in% undesirable_words) %>%
+  mutate(word_length = nchar(word)) 
+
+prince_word_lengths %>%
+  count(word_length, sort = TRUE) %>%
+  ggplot(aes(word_length), 
+         binwidth = 10) + 
+    geom_histogram(aes(fill = ..count..),
+                   breaks = seq(1,25, by = 2), 
+                   show.legend = FALSE) + 
+    xlab("Word Length") + 
+    ylab("Word Count") +
+    ggtitle("Word Length Distribution") +
+    theme(plot.title = element_text(hjust = 0.5),
+          panel.grid.minor = element_blank())
+```
+```{r longest-words}
+wc <- prince_word_lengths %>%
+  ungroup() %>%
+  select(word, word_length) %>%
+  distinct() %>%
+  arrange(desc(word_length))
+
+wordcloud2(wc[1:300, ], 
+           size = .15,
+           minSize = .0005,
+           ellipticity = .3, 
+           rotateRatio = 1, 
+           fontWeight = "bold")
+```
+# Lexical Diversity
+
+The more varied a vocabulary a text possesses, the higher its lexical diversity. Song Vocabulary is a representation of how many unique words are used in a song. 
+
+```{r lexical-diversity}
+lex_diversity_per_year <- prince %>%
+  filter(decade != "NA") %>%
+  unnest_tokens(word, lyrics) %>%
+  group_by(song,year) %>%
+  summarise(lex_diversity = n_distinct(word)) %>%
+  arrange(desc(lex_diversity)) 
+
+diversity_plot <- lex_diversity_per_year %>%
+  ggplot(aes(year, lex_diversity)) +
+    geom_point(color = my_colors[3],
+               alpha = .4, 
+               size = 4, 
+               position = "jitter") + 
+    stat_smooth(color = "black", se = FALSE, method = "lm") +
+    geom_smooth(aes(x = year, y = lex_diversity), se = FALSE,
+                color = "blue", lwd = 2) +
+    ggtitle("Lexical Diversity") +
+    xlab("") + 
+    ylab("") +
+    scale_color_manual(values = my_colors) +
+    theme_classic() + 
+    theme_lyrics()
+
+diversity_plot
+```
+# Lexical Density
+
+Recall that for this tutorial, lexical density is defined as the number of unique words divided by the total number of words. This is an indicator of word repetition, which is a critical songwriter's tool. As lexical density increases, repetition decreases. (Note: this does not imply sequential repetition, which is yet another songwriting trick.)
+
+For density, it's best to keep in all words, including stop words. So start with the original dataset and unnest the words. Group by song and year and use n_distinct() and n() to calculate the density. Pipe that into ggplot() with geom_smooth(). Add an additional stat_smooth() with method="lm" for a linear smooth model.
+
+
+```{r lexical-density}
+lex_density_per_year <- prince %>%
+  filter(decade != "NA") %>%
+  unnest_tokens(word, lyrics) %>%
+  group_by(song,year) %>%
+  summarise(lex_density = n_distinct(word)/n()) %>%
+  arrange(desc(lex_density))
+
+density_plot <- lex_density_per_year %>%
+  ggplot(aes(year, lex_density)) + 
+    geom_point(color = my_colors[4],
+               alpha = .4, 
+               size = 4, 
+               position = "jitter") + 
+    stat_smooth(color = "black", 
+                se = FALSE, 
+                method = "lm") +
+    geom_smooth(aes(x = year, y = lex_density), 
+                se = FALSE,
+                color = "blue", 
+                lwd = 2) +
+    ggtitle("Lexical Density") + 
+    xlab("") + 
+    ylab("") +
+    scale_color_manual(values = my_colors) +
+    theme_classic() + 
+    theme_lyrics()
+
+density_plot
+```
+
+```{r charthistory}
+chart_history <- prince %>%
+  filter(peak > 0) %>%
+  group_by(year, chart_level) %>%
+  summarise(number_of_songs = n()) %>%
+  ggplot(aes(year, number_of_songs)) + 
+    geom_point(color = my_colors[5],
+               alpha = .4, 
+               size = 4, 
+               position = "jitter") +
+    geom_smooth(aes(x = year, y = number_of_songs), 
+                se = FALSE, 
+                method = "lm", 
+                color = "black" ) +
+    geom_smooth(aes(x = year, y = number_of_songs), 
+                se = FALSE,
+                color = "blue", 
+                lwd = 2) +
+   ggtitle("Chart History") +
+   xlab("") + 
+   ylab("") +
+   scale_color_manual(values = my_colors) +
+   theme_classic() + 
+   theme_lyrics()
+
+grid.arrange(diversity_plot, density_plot, chart_history, ncol = 3)
+```
+
+# Term frequency - Inverse Document Frequency (TF-IDF)
+
+
+* Term Frequency (TF): Number of times a term occurs in a document
+* Document Frequency (DF): Number of documents that contain each word
+* Inverse Document Frequency (IDF) = 1/DF
+* TF-IDF = TF * IDF
+
+So, take your original Prince data frame and unnest tokens to words, remove undesirable words, but leave in the stop words. Then use `bind_tf_idf()` to run the formulas and create new columns.
+
+```{r tf-idf}
+ popular_tfidf_words <- prince %>%
+  unnest_tokens(word, lyrics) %>%
+  distinct() %>%
+  filter(!word %in% undesirable_words) %>%
+  filter(nchar(word) > 3) %>%
+  count(chart_level, word, sort = TRUE) %>%
+  ungroup() %>%
+  bind_tf_idf(word, chart_level, n)
+
+head(popular_tfidf_words)
+```
+
+```{r tf-idf-graph}
+top_popular_tfidf_words <- popular_tfidf_words %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(chart_level) %>% 
+  slice(seq_len(8)) %>%
+  ungroup() %>%
+  arrange(chart_level, tf_idf) %>%
+  mutate(row = row_number())
+
+top_popular_tfidf_words %>%
+  ggplot(aes(x = row, tf_idf, 
+             fill = chart_level)) +
+    geom_col(show.legend = NULL) +
+    labs(x = NULL, y = "TF-IDF") + 
+    ggtitle("Important Words using TF-IDF by Chart Level") +
+    theme_lyrics() +  
+    facet_wrap(~chart_level, ncol = 3, scales = "free") +
+    scale_x_continuous(  # This handles replacement of row 
+      breaks = top_popular_tfidf_words$row, # notice need to reuse data frame
+      labels = top_popular_tfidf_words$word) +
+    coord_flip()
+```
+
+# tf-idf by decade
+
+```{r tf-idf-by-decade}
+tfidf_words_decade <- prince %>%
+  unnest_tokens(word, lyrics) %>%
+  distinct() %>%
+  filter(!word %in% undesirable_words & decade != 'NA') %>%
+  filter(nchar(word) > 3) %>%
+  count(decade, word, sort = TRUE) %>%
+  ungroup() %>%
+  bind_tf_idf(word, decade, n) %>%
+  arrange(desc(tf_idf))
+
+top_tfidf_words_decade <- tfidf_words_decade %>% 
+  group_by(decade) %>% 
+  slice(seq_len(8)) %>%
+  ungroup() %>%
+  arrange(decade, tf_idf) %>%
+  mutate(row = row_number())
+
+top_tfidf_words_decade %>%
+  ggplot(aes(x = row, tf_idf, fill = decade)) +
+    geom_col(show.legend = NULL) +
+    labs(x = NULL, y = "TF-IDF") + 
+    ggtitle("Important Words using TF-IDF by Decade") +
+    theme_lyrics() +  
+    facet_wrap(~decade, 
+               ncol = 3, nrow = 2, 
+               scales = "free") +
+    scale_x_continuous(  # this handles replacement of row 
+      breaks = top_tfidf_words_decade$row, # notice need to reuse data frame
+      labels = top_tfidf_words_decade$word) +
+    coord_flip()
+```
+
+```{r wordcloud2-idf}
+wc <- tfidf_words_decade %>%
+  arrange(desc(tf_idf)) %>%
+  select(word, tf_idf)
+
+wordcloud2(wc[1:300, ], 
+           color = "random-dark", 
+           minRotation = -pi / 6, 
+           maxRotation = -pi / 3, 
+           minSize = .002, 
+           ellipticity = .3, 
+           rotateRatio = 1, 
+           size = .2, 
+           fontWeight = "bold", 
+           gridSize = 1.5 )
+
+```
+
