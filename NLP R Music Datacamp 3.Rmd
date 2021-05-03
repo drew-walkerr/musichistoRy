@@ -1,0 +1,458 @@
+---
+title: "NLP R Music Data Camp 2a Sentiment"
+author: "Drew Walker"
+date: "5/2/2021"
+output: html_document
+---
+
+Thanks for this great tutorial [Debbie Liske](https://www.datacamp.com/profile/debbieliskefa5156febfc047aeb79dee6c802d3d04)!
+
+<https://www.datacamp.com/community/tutorials/sentiment-analysis-R>
+
+# Sentiment Analysis Overview
+
+## Methods:
+
+Sentiment analysis is a type of text mining which aims to determine the opinion and subjectivity of its content. When applied to lyrics, the results can be representative of not only the artist's attitudes, but can also reveal pervasive, cultural influences. There are different methods used for sentiment analysis, \* including training a known dataset, \* creating your own classifiers with rules, \* and using predefined lexical dictionaries (lexicons).
+
+In this tutorial, you will use the lexicon-based approach, but I would encourage you to investigate the other methods as well as their associated trade-offs.
+
+-   Levels: Just as there are different methods used for sentiment analysis, there are also different levels of analysis based on the text.
+
+These levels are typically identified as document, sentence, and word.
+
+-   In lyrics, the document could be defined as sentiment per
+
+    -   decade,
+
+    -   year,
+
+    -   chart-level,
+
+    -   or song.
+
+The sentence level is not usually an option with lyrics as punctuation can detract from rhymes and patterns. Word level analysis exposes detailed information and can be used as foundational knowledge for more advanced practices in topic modeling.
+
+```{r setup}
+library(dplyr) #Data manipulation (also included in the tidyverse package)
+library(textdata)
+library(tidytext) #Text mining
+library(tidyr) #Spread, separate, unite, text mining (also included in the tidyverse package)
+library(widyr) #Use for pairwise correlation
+#Visualizations!
+library(ggplot2) #Visualizations (also included in the tidyverse package)
+library(ggrepel) #`geom_label_repel`
+library(gridExtra) #`grid.arrange()` for multi-graphs
+library(knitr) #Create nicely formatted output tables
+library(kableExtra) #Create nicely formatted output tables
+library(formattable) #For the color_tile function
+library(circlize) #Visualizations - chord diagram
+library(memery) #Memes - images with plots
+library(magick) #Memes - images with plots (image_read)
+library(yarrr)  #Pirate plot
+library(radarchart) #Visualizations
+library(igraph) #ngram network diagrams
+library(ggraph) #ngram network diagrams
+
+#Define some colors to use throughout
+my_colors <- c("#E69F00", "#56B4E9", "#009E73", "#CC79A7", "#D55E00", "#D65E00")
+
+#Customize ggplot2's default theme settings
+#This tutorial doesn't actually pass any parameters, but you may use it again in future tutorials so it's nice to have the options
+theme_lyrics <- function(aticks = element_blank(),
+                         pgminor = element_blank(),
+                         lt = element_blank(),
+                         lp = "none")
+{
+  theme(plot.title = element_text(hjust = 0.5), #Center the title
+        axis.ticks = aticks, #Set axis ticks to on or off
+        panel.grid.minor = pgminor, #Turn the minor grid lines on or off
+        legend.title = lt, #Turn the legend title on or off
+        legend.position = lp) #Turn the legend on or off
+}
+
+#Customize the text tables for consistency using HTML formatting
+my_kable_styling <- function(dat, caption) {
+  kable(dat, "html", escape = FALSE, caption = caption) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed", "bordered"),
+                full_width = FALSE)
+}
+```
+
+```{r load-data}
+
+prince_data <- read.csv('prince_new.csv', stringsAsFactors = FALSE, row.names = 1)
+
+```
+
+## Stopwords
+
+-   How do you come up with undesirable words list for analysis? is this checking a stats parameter? Throw off others?
+
+```{r stopwords}
+
+undesirable_words <- c("prince", "chorus", "repeat", "lyrics",
+                       "theres", "bridge", "fe0f", "yeah", "baby",
+                       "alright", "wanna", "gonna", "chorus", "verse",
+                       "whoa", "gotta", "make", "miscellaneous", "2",
+                       "4", "ooh", "uurh", "pheromone", "poompoom", "3121",
+                       "matic", " ai ", " ca ", " la ", "hey", " na ",
+                       " da ", " uh ", " tin ", "  ll", "transcription",
+                       "repeats", "la", "da", "uh", "ah")
+
+#Create tidy text format: Unnested, Unsummarized, -Undesirables, Stop and Short words
+prince_tidy <- prince_data %>%
+  unnest_tokens(word, lyrics) %>% #Break the lyrics into individual words
+  filter(!word %in% undesirable_words) %>% #Remove undesirables
+  filter(!nchar(word) < 3) %>% #Words like "ah" or "oo" used in music
+  anti_join(stop_words) #Data provided by the tidytext package
+```
+
+```{r, pirateplot-wordcount-frame}
+
+word_summary <- prince_tidy %>%
+  mutate(decade = ifelse(is.na(decade),"NONE", decade)) %>%
+  group_by(decade, song) %>%
+  mutate(word_count = n_distinct(word)) %>%
+  select(song, Released = decade, Charted = charted, word_count) %>%
+  distinct() %>% #To obtain one record per song
+  ungroup()
+
+pirateplot(formula =  word_count ~ Released + Charted, #Formula
+   data = word_summary, #Data frame
+   xlab = NULL, ylab = "Song Distinct Word Count", #Axis labels
+   main = "Lexical Diversity Per Decade", #Plot title
+   pal = "google", #Color scheme
+   point.o = .2, #Points
+   avg.line.o = 1, #Turn on the Average/Mean line
+   theme = 0, #Theme
+   point.pch = 16, #Point `pch` type
+   point.cex = 1.5, #Point size
+   jitter.val = .1, #Turn on jitter to see the songs better
+   cex.lab = .9, cex.names = .7) #Axis label size
+```
+
+```{r song-count-per-year}
+songs_year <- prince_data %>%
+  select(song, year) %>%
+  group_by(year) %>%
+  summarise(song_count = n())
+
+id <- seq_len(nrow(songs_year))
+songs_year <- cbind(songs_year, id)
+label_data = songs_year
+number_of_bar = nrow(label_data) #Calculate the ANGLE of the labels
+angle = 90 - 360 * (label_data$id - 0.5) / number_of_bar #Center things
+label_data$hjust <- ifelse(angle < -90, 1, 0) #Align label
+label_data$angle <- ifelse(angle < -90, angle + 180, angle) #Flip angle
+ggplot(songs_year, aes(x = as.factor(id), y = song_count)) +
+  geom_bar(stat = "identity", fill = alpha("purple", 0.7)) +
+  geom_text(data = label_data, aes(x = id, y = song_count + 10, label = year, hjust = hjust), color = "black", alpha = 0.6, size = 3, angle =  label_data$angle, inherit.aes = FALSE ) +
+  coord_polar(start = 0) +
+  ylim(-20, 150) + #Size of the circle
+  theme_minimal() +
+  theme(axis.text = element_blank(),
+        axis.title = element_blank(),
+        panel.grid = element_blank(),
+        plot.margin = unit(rep(-4,4), "in"),
+        plot.title = element_text(margin = margin(t = 10, b = -10)))
+```
+
+Chord Diagram
+
+-   Showing relationships between uncharted/charted and year
+
+```{r decade-chart}
+decade_chart <-  prince_data %>%
+  filter(decade != "NA") %>% #Remove songs without release dates
+  count(decade, charted)  #Get SONG count per chart level per decade. Order determines top or bottom.
+
+circos.clear() #Very important - Reset the circular layout parameters!
+grid.col = c("1970s" = my_colors[1], "1980s" = my_colors[2], "1990s" = my_colors[3], "2000s" = my_colors[4], "2010s" = my_colors[5], "Charted" = "grey", "Uncharted" = "grey") #assign chord colors
+# Set the global parameters for the circular layout. Specifically the gap size
+circos.par(gap.after = c(rep(5, length(unique(decade_chart[[1]])) - 1), 15,
+                         rep(5, length(unique(decade_chart[[2]])) - 1), 15))
+
+chordDiagram(decade_chart, grid.col = grid.col, transparency = .2)
+title("Relationship Between Chart and Decade")
+```
+
+## Explore sentiment lexicons
+
+The `tidytext` package includes a dataset called `sentiments` which provides several distinct lexicons. These lexicons are dictionaries of words with an assigned sentiment category or value. `tidytext` provides three general purpose lexicons:
+
+-   **AFINN:** assigns words with a score that runs between -5 and 5, with negative scores indicating negative sentiment and positive scores indicating positive sentiment
+
+-   **Bing:** assigns words into positive and negative categories
+
+-   **NRC:** assigns words into one or more of the following ten categories: positive, negative, anger, anticipation, disgust, fear, joy, sadness, surprise, and trust In order to examine the lexicons, create a data frame called `new_sentiments`. Filter out a financial lexicon, create a binary (also described as *polar*) sentiment field for the AFINN lexicon by converting the numerical score to *positive* or *negative*, and add a field that holds the distinct word count for each lexicon.
+
+    ```{r get-sentiments}
+    afinn_sentiments <- get_sentiments("afinn") %>% 
+      rename(sentiment = value) %>% 
+      mutate(lexicon = "afinn")
+    bing_sentiments <- get_sentiments("bing")%>% 
+      mutate(lexicon = "bing")
+    nrc_sentiments <- get_sentiments("nrc")%>% 
+      mutate(lexicon = "nrc")
+
+    new_sentiments <-  rbind(afinn_sentiments,bing_sentiments, nrc_sentiments)
+    new_sentiments <- new_sentiments %>% 
+      mutate(sentiment2 = ifelse(lexicon == "afinn" & sentiment >= 0, "positive",
+                              ifelse(lexicon == "afinn" & sentiment < 0,"negative", sentiment))) %>% 
+    group_by(lexicon) %>%
+      mutate(words_in_lexicon = n_distinct(word)) %>% 
+      ungroup()
+
+
+    new_sentiments %>%
+      group_by(lexicon, sentiment, words_in_lexicon) %>%
+      summarise(distinct_words = n_distinct(word)) %>%
+      ungroup() %>%
+      spread(sentiment, distinct_words) %>%
+      mutate(lexicon = color_tile("lightblue", "lightblue")(lexicon),
+             words_in_lexicon = color_bar("lightpink")(words_in_lexicon))%>% 
+      my_kable_styling(caption = "Word Counts Per Lexicon")
+    ```
+
+    ## Choosing a lexicon
+
+    ### Match Dot Common
+
+    -   In order to determine which lexicon is more applicable to the lyrics, you'll want to look at
+    -   the match ratio of words that are common to both the lexicon and the lyrics.
+
+As a reminder, there are 76116 total words and 7851 distinct words in `prince_tidy`.
+
+    -   So how many of those words are actually in the lexicons? 
+
+Use an inner_join() between prince_tidy and new_sentiments and then group by lexicon. The NRC lexicon has 10 different categories, and a word may appear in more than one category: that is, words can be negative and sad. That means that you'll want to use n_distinct() in summarise() to get the distinct word count per lexicon.
+
+-   Error below : <https://juliasilge.com/blog/sentiment-lexicons/>
+
+    ```{r lexicons-and-lyrics}
+    prince_tidy %>%
+      mutate(words_in_lyrics = n_distinct(word)) %>%
+      inner_join(new_sentiments) %>%
+      group_by(lexicon, words_in_lyrics, words_in_lexicon) %>%
+      summarise(lex_match_words = n_distinct(word)) %>%
+      ungroup() %>%
+      mutate(total_match_words = sum(lex_match_words), #Not used but good to have
+         match_ratio = lex_match_words / words_in_lyrics) %>%
+      select(lexicon, lex_match_words,  words_in_lyrics, match_ratio) %>%
+      mutate(lex_match_words = color_bar("lightpink")(lex_match_words),
+         lexicon = color_tile("lightgreen", "lightgreen")(lexicon)) %>%
+      my_kable_styling(caption = "Lyrics Found In Lexicons")
+    ```
+
+Looking at specific words from Prince lyrics that impacte sentiment. In all lexicons?
+
+```{r prince-lexicons}
+new_sentiments %>%
+  filter(word %in% c("dark", "controversy", "gangster",
+                     "discouraged", "race")) %>%
+  arrange(word) %>% #sort
+  select(-sentiment) %>% #remove this field
+  mutate(word = color_tile("lightblue", "lightblue")(word),
+         words_in_lexicon = color_bar("lightpink")(words_in_lexicon),
+         lexicon = color_tile("lightgreen", "lightgreen")(lexicon)) %>%
+  my_kable_styling(caption = "Specific Words")
+```
+
+Sexuality as a theme in prince's music -- predefined lexicons with different forms
+
+```{r sexuality-lexicon-matching}
+my_word_list <- prince_data %>%
+  unnest_tokens(word, lyrics) %>%
+  filter(grepl("sex", word)) %>% #Use `grepl()` to find the substring `"sex"`
+  count(word) %>%
+  select(myword = word, n) %>% #Rename word
+  arrange(desc(n))
+
+new_sentiments %>%
+  #Right join gets all words in `my_word_list` to show nulls
+  right_join(my_word_list, by = c("word" = "myword")) %>%
+  filter(word %in% my_word_list$myword) %>%
+  mutate(word = color_tile("lightblue", "lightblue")(word),
+          instances = color_tile("lightpink", "lightpink")(n),
+          lexicon = color_tile("lightgreen", "lightgreen")(lexicon)) %>%
+  select(-sentiment, -n) %>% #Remove these fields
+  my_kable_styling(caption = "Dependency on Word Form")
+```
+
+# More Data Prep: Stemming, Lemmatization, and Word Replacement
+
+-   Stemming: generally refers to removing suffixes from words to get the common origin
+-   Lemmatization: reducing inflected (or sometimes derived) words to their word stem, base or root form
+-   Word replacement: replace words with more frequently used synonyms
+
+An advanced concept in sentiment analysis is that of synonym (semantically similar peer) and hypernym (a common parent) replacement. These are words that are more frequently used than the related word in the lyric, and actually do appear in a lexicon, thus giving a higher match percentage. There is not enough space in this tutorial to address additional data preparation, but it's definitely something to consider!
+
+# Create lexicon-specific Sentiment datasets
+
+```{r lexicon-specific-sentiment-prince-datasets}
+prince_bing <- prince_tidy %>%
+  inner_join(get_sentiments("bing"))
+prince_nrc <- prince_tidy %>%
+  inner_join(get_sentiments("nrc"))
+prince_nrc_sub <- prince_tidy %>%
+  inner_join(get_sentiments("nrc")) %>%
+  filter(!sentiment %in% c("positive", "negative"))
+```
+
+## "In the Mood": Overall Sentiment
+
+Examine different levels of text, all songs, chart level, decade level, word level. Graphing nrc sentiment of entire datsaet, using `memery` and `magick` to add images/memes to graphs
+
+```{r}
+nrc_plot <- prince_nrc %>%
+  group_by(sentiment) %>%
+  summarise(word_count = n()) %>%
+  ungroup() %>%
+  mutate(sentiment = reorder(sentiment, word_count)) 
+
+ggplot(data = nrc_plot, aes(sentiment, word_count, fill = word_count)) + 
+  geom_col() +
+  guides(fill = FALSE) + #Turn off the legend
+  theme_lyrics() +
+  labs(x = NULL, y = "Word Count") +
+  scale_y_continuous(limits = c(0, 15000)) + #Hard code the axis limit
+  ggtitle("Prince NRC Sentiment") +
+  coord_flip()
+
+  
+#Use `fill = -word_count` to make the larger bars darker
+# img <- "prince_background2.jpg" #Load the background image
+# lab <- ""  #Turn off the label
+
+#Overlay the plot on the image and create the meme file
+# meme(img, lab, "meme_nrc.jpg", inset = nrc_plot)
+#Read the file back in and display it!
+# nrc_meme <- image_read("meme_nrc.jpg")
+#plot(nrc_meme)  
+```
+
+## Bing Sentiment Prince
+
+```{r bing-prince}
+bing_plot <- prince_bing %>%
+  group_by(sentiment) %>%
+  summarise(word_count = n()) %>%
+  ungroup() %>%
+  mutate(sentiment = reorder(sentiment, word_count)) %>%
+  ggplot(aes(sentiment, word_count, fill = sentiment)) +
+  geom_col() +
+  guides(fill = FALSE) +
+  theme_lyrics() +
+  labs(x = NULL, y = "Word Count") +
+  scale_y_continuous(limits = c(0, 8000)) +
+  ggtitle("Prince Bing Sentiment") +
+  coord_flip()
+
+bing_plot
+
+# img1 <- "prince_background1.jpg"
+# lab1 <- ""
+# meme(img1, lab1, "meme_bing.jpg", inset = # bing_plot)
+# x <- image_read("meme_bing.jpg")
+# plot(x)
+```
+
+Pretty even positive/negative here
+
+In acoustics, there is something called phase cancellation where the frequency of two instances of the same wave are exactly out of phase and cancel each other out, for example, when you're recording a drum with two mics and it takes the sound longer to get to one mic than the other. This results in total silence at that frequency! How may this apply to sentiment analysis of large datasets? Give it some thought.
+
+> Linguistic Professor: "In English, a double negative forms a positive. In Russian, a double negative is still a negative. However, there is no language wherein a double positive can form a negative." Disagreeing student: "Yeah, right."
+
+### **Crank It Up: Chart Level**
+
+\
+
+```{r polarity-chart}
+# Polarity chart where we summarize sentiment by chart level (top 10, 100, uncharted m calculate percent positive as positive / positive + negative * 100 
+prince_polarity_chart <- prince_bing %>%
+  count(sentiment, chart_level) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(polarity = positive - negative,
+    percent_positive = positive / (positive + negative) * 100)
+
+#Polarity by chart
+plot1 <- prince_polarity_chart %>%
+  ggplot( aes(chart_level, polarity, fill = chart_level)) +
+  geom_col() +
+  scale_fill_manual(values = my_colors[3:5]) +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_lyrics() + theme(plot.title = element_text(size = 11)) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("Polarity By Chart Level")
+
+#Percent positive by chart
+plot2 <- prince_polarity_chart %>%
+  ggplot( aes(chart_level, percent_positive, fill = chart_level)) +
+  geom_col() +
+  scale_fill_manual(values = c(my_colors[3:5])) +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_lyrics() + theme(plot.title = element_text(size = 11)) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("Percent Positive By Chart Level")
+
+grid.arrange(plot1, plot2, ncol = 2)
+
+```
+
+# Changing sentiment over time
+
+```{r sentiment-over-time}
+
+prince_polarity_year <- prince_bing %>%
+  count(sentiment, year) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(polarity = positive - negative,
+    percent_positive = positive / (positive + negative) * 100)
+
+polarity_over_time <- prince_polarity_year %>%
+  ggplot(aes(year, polarity, color = ifelse(polarity >= 0,my_colors[5],my_colors[4]))) +
+  geom_col() +
+  geom_smooth(method = "loess", se = FALSE) +
+  geom_smooth(method = "lm", se = FALSE, aes(color = my_colors[1])) +
+  theme_lyrics() + theme(plot.title = element_text(size = 11)) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("Polarity Over Time")
+
+relative_polarity_over_time <- prince_polarity_year %>%
+  ggplot(aes(year, percent_positive , color = ifelse(polarity >= 0,my_colors[5],my_colors[4]))) +
+  geom_col() +
+  geom_smooth(method = "loess", se = FALSE) +
+  geom_smooth(method = "lm", se = FALSE, aes(color = my_colors[1])) +
+  theme_lyrics() + theme(plot.title = element_text(size = 11)) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("Percent Positive Over Time")
+
+grid.arrange(polarity_over_time, relative_polarity_over_time, ncol = 2)
+
+
+```
+
+## Graphing relationships between nrc sentiments and decades 
+
+```{r, mood-ring}
+grid.col = c("1970s" = my_colors[1], "1980s" = my_colors[2], "1990s" = my_colors[3], "2000s" = my_colors[4], "2010s" = my_colors[5], "anger" = "grey", "anticipation" = "grey", "disgust" = "grey", "fear" = "grey", "joy" = "grey", "sadness" = "grey", "surprise" = "grey", "trust" = "grey")
+
+decade_mood <-  prince_nrc %>%
+  filter(decade != "NA" & !sentiment %in% c("positive", "negative")) %>%
+  count(sentiment, decade) %>%
+  group_by(decade, sentiment) %>%
+  summarise(sentiment_sum = sum(n)) %>%
+  ungroup()
+
+circos.clear()
+#Set the gap size
+circos.par(gap.after = c(rep(5, length(unique(decade_mood[[1]])) - 1), 15,
+                         rep(5, length(unique(decade_mood[[2]])) - 1), 15))
+chordDiagram(decade_mood, grid.col = grid.col, transparency = .2)
+title("Relationship Between Mood and Decade")
+```
+
+```{r real-time-sentiment}
+
+```
